@@ -1,0 +1,65 @@
+import streamlit as st
+import pandas as pd
+
+st.title("📊 ECO Comparison Tracker Dashboard")
+
+# File path (network path)
+file_path = r"\\p2b4ped2030\Shared\NPI - ECO Tracker PC_FC\ECO Comparison Tracker PC FY26.xlsm"
+
+try:
+    # Load data from sheet "PC", rows 5+, columns A:K
+    df = pd.read_excel(
+        file_path,
+        sheet_name="PC",
+        skiprows=4,
+        usecols="A:K",
+        engine="openpyxl"
+    )
+
+    # Filter by PC if the column exists
+    if "PC" in df.columns:
+        selected_pc = st.selectbox("Filter by PC", df["PC"].unique())
+        filtered_df = df[df["PC"] == selected_pc].copy()
+    else:
+        filtered_df = df.copy()
+
+    # ------------------------------
+    # Create tabs
+    tab1, tab2 = st.tabs(["Dashboard", "Data Summary"])
+
+    # ------------------------------
+    # Tab 1: Dashboard (charts only)
+    with tab1:
+        st.subheader("Vch No Count per Week")
+        if "Week" in df.columns and "Vch No" in df.columns:
+            # Create Week_num safely
+            filtered_df["Week_num"] = (
+                filtered_df["Week"].astype(str)
+                .str.strip()
+                .str.upper()
+                .str.replace("WK", "")
+                .str.replace(" ", "")
+                .astype(int)
+            )
+
+            # Count Vch No per week
+            week_counts = filtered_df.groupby("Week_num")["Vch No"].count().reset_index()
+            week_counts.rename(columns={"Vch No": "Count"}, inplace=True)
+
+            # Ensure all weeks 1-52 are present
+            all_weeks = pd.DataFrame({"Week_num": range(1, 53)})
+            week_counts = all_weeks.merge(week_counts, on="Week_num", how="left").fillna(0)
+
+            st.bar_chart(week_counts.set_index("Week_num")["Count"])
+
+        # KPI summary card
+        st.metric("Total ECO", len(filtered_df))
+
+    # ------------------------------
+    # Tab 2: Data Summary (table only)
+    with tab2:
+        st.subheader(f"Filtered Data Table{f' - PC = {selected_pc}' if 'selected_pc' in locals() else ''}")
+        st.dataframe(filtered_df)
+
+except Exception as e:
+    st.error(f"Error reading Excel file: {e}")
