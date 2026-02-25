@@ -1,0 +1,131 @@
+import streamlit as st
+import pandas as pd
+
+st.set_page_config(page_title="ECO Executive Dashboard", layout="wide")
+st.title("📊 ECO Executive Dashboard")
+
+# ---------------------------------------------------
+# Shared network file path
+FILE_PATH = r"\\p2b4ped2030\Shared\NPI - ECO Tracker PC_FC\ECO Comparison Tracker PC FY26.xlsm"
+
+# ---------------------------------------------------
+# Cache data
+@st.cache_data
+def load_data():
+    df = pd.read_excel(
+        FILE_PATH,
+        sheet_name="PC",
+        skiprows=4,
+        usecols="A:K",
+        engine="openpyxl"
+    )
+    return df
+
+try:
+    df = load_data()
+
+    # ---------------------------------------------------
+    # Clean Week column once
+    if "Week" in df.columns:
+        df["Week_num"] = (
+            df["Week"]
+            .astype(str)
+            .str.upper()
+            .str.replace("WK", "", regex=False)
+            .str.replace(" ", "", regex=False)
+        )
+        df["Week_num"] = pd.to_numeric(df["Week_num"], errors="coerce")
+
+    # ---------------------------------------------------
+    # Sidebar Filters
+    st.sidebar.header("Filters")
+
+    if "PC" in df.columns:
+        pc_list = sorted(df["PC"].dropna().unique())
+        selected_pc = st.sidebar.selectbox("Select PC", ["All"] + pc_list)
+    else:
+        selected_pc = "All"
+
+    if selected_pc != "All":
+        filtered_df = df[df["PC"] == selected_pc].copy()
+    else:
+        filtered_df = df.copy()
+
+    # ---------------------------------------------------
+    # KPI ROW (Executive Style)
+    st.subheader("📌 Key Metrics")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total ECO", len(filtered_df))
+
+    if "Vch No" in filtered_df.columns:
+        col2.metric("Unique Vch No", filtered_df["Vch No"].nunique())
+
+    if "PC" in filtered_df.columns:
+        col3.metric("Total PCs", filtered_df["PC"].nunique())
+
+    st.divider()
+
+    # ---------------------------------------------------
+    # ROW 1 — Weekly Trend (Line Chart)
+    st.subheader("📈 Weekly ECO Trend")
+
+    if "Week_num" in filtered_df.columns and "Vch No" in filtered_df.columns:
+        weekly_trend = (
+            filtered_df.groupby("Week_num")["Vch No"]
+            .count()
+            .reset_index(name="Count")
+            .sort_values("Week_num")
+        )
+
+        st.line_chart(weekly_trend.set_index("Week_num")["Count"])
+
+    st.divider()
+
+    # ---------------------------------------------------
+    # ROW 2 — PC Comparison
+    col_left, col_right = st.columns(2)
+
+    # ECO per PC (Bar Chart)
+    with col_left:
+        st.subheader("🏭 ECO per PC")
+
+        if "PC" in df.columns:
+            pc_counts = (
+                df.groupby("PC")["Vch No"]
+                .count()
+                .reset_index(name="Count")
+                .sort_values("Count", ascending=False)
+            )
+
+            st.bar_chart(pc_counts.set_index("PC")["Count"])
+
+    # Top 10 Weeks (Bar Chart)
+    with col_right:
+        st.subheader("🔥 Top 10 Weeks")
+
+        if "Week_num" in df.columns:
+            top_weeks = (
+                df.groupby("Week_num")["Vch No"]
+                .count()
+                .reset_index(name="Count")
+                .sort_values("Count", ascending=False)
+                .head(10)
+            )
+
+            st.bar_chart(top_weeks.set_index("Week_num")["Count"])
+
+    st.divider()
+
+    # ---------------------------------------------------
+    # Expandable Data Table
+    with st.expander("📋 View Detailed Data"):
+        st.dataframe(filtered_df, use_container_width=True)
+
+except FileNotFoundError:
+    st.error("❌ Shared Excel file not found. Please check network access.")
+except Exception as e:
+    st.error(f"❌ Error reading Excel file: {e}")
+
+    
